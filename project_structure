@@ -1,0 +1,8 @@
+tts-project/
+  ├── backend/
+  │   ├── app.py
+  │   ├── requirements.txt
+  │   └── audio_files/
+  ├── frontend-react/
+  │   ├── public/
+  │   └── src/ 

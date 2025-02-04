@@ -1,0 +1,216 @@
+#root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  background-color: #f0f2f5;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.container {
+  flex: 1;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: transparent;
+}
+
+h1 {
+  margin-bottom: 2.5rem;
+  color: #1a365d;
+  font-size: 2.5rem;
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  width: 90%;
+  max-width: 900px;
+  margin: 0 auto;
+  align-items: center;
+}
+
+textarea {
+  width: 100%;
+  padding: 1.5rem;
+  font-size: 1.1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  resize: vertical;
+  min-height: 200px;
+  font-family: inherit;
+  background-color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  color: #2d3748;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15);
+}
+
+.convert-btn {
+  padding: 1rem 3rem;
+  font-size: 1.2rem;
+  background-color: #2c5282;
+  color: white;
+  border: none;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 0 auto;
+  width: auto;
+  min-width: 200px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.convert-btn:hover:not(:disabled) {
+  background-color: #2b6cb0;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.convert-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.convert-btn:disabled {
+  background-color: #a0aec0;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.error {
+  color: #e53e3e;
+  margin: 1.5rem auto;
+  padding: 1rem;
+  border-radius: 8px;
+  background-color: #fff5f5;
+  max-width: 800px;
+  font-size: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid #fed7d7;
+}
+
+.audio-player {
+  margin: 2.5rem auto 0;
+  width: 90%;
+  max-width: 900px;
+  padding: 2rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  align-self: center;
+}
+
+audio {
+  width: 100%;
+  height: 50px;
+  margin-top: 1rem;
+}
+
+audio::-webkit-media-controls-panel {
+  background-color: #edf2f7;
+}
+
+audio::-webkit-media-controls-play-button {
+  background-color: #2c5282;
+  border-radius: 50%;
+}
+
+audio::-webkit-media-controls-play-button:hover {
+  background-color: #2b6cb0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .container {
+    padding: 2rem 1rem;
+    min-height: 100vh;
+  }
+  
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+  }
+  
+  textarea {
+    padding: 1rem;
+    min-height: 150px;
+  }
+  
+  .convert-btn {
+    padding: 0.8rem 2rem;
+    font-size: 1rem;
+    min-width: 160px;
+  }
+  
+  .audio-player {
+    padding: 1.5rem;
+  }
+}
+
+/* 添加一些动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.audio-player {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* 添加一些全局样式 */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f0f2f5;
+  color: #2d3748;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
