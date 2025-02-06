@@ -4,6 +4,7 @@ import os
 from kokoro import KPipeline
 import soundfile as sf
 import numpy as np
+import json
 from datetime import datetime
 import re
 
@@ -32,12 +33,36 @@ def get_safe_filename(text, timestamp):
     # 组合文件名：第一句话_时间戳.wav
     return f'{safe_name}_{timestamp}.wav'
 
+# 添加文章存储目录
+ARTICLES_DIR = "articles"
+if not os.path.exists(ARTICLES_DIR):
+    os.makedirs(ARTICLES_DIR)
+
+# 修改 text_to_speech 函数
 @app.route('/api/tts', methods=['POST'])
 def text_to_speech():
     try:
         text = request.json.get('text')
         if not text:
             return jsonify({'error': 'No text provided'}), 400
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = get_safe_filename(text, timestamp)
+        
+        # 保存文章内容
+        article_id = timestamp
+        article_data = {
+            'id': article_id,
+            'title': text[:30] + '...' if len(text) > 30 else text,
+            'content': text,
+            'audio_filename': filename,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # 保存文章文件
+        article_path = os.path.join(ARTICLES_DIR, f'{article_id}.json')
+        with open(article_path, 'w', encoding='utf-8') as f:
+            json.dump(article_data, f, ensure_ascii=False)
 
         # 生成时间戳
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -60,11 +85,43 @@ def text_to_speech():
 
             return jsonify({
                 'success': True,
-                'filename': filename
+                'filename': filename,
+                'article_id': article_id
             })
-        else:
-            return jsonify({'error': '音频生成失败'}), 500
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 添加获取文章列表的接口
+@app.route('/api/articles', methods=['GET'])
+def get_articles():
+    try:
+        articles = []
+        for filename in os.listdir(ARTICLES_DIR):
+            if filename.endswith('.json'):
+                with open(os.path.join(ARTICLES_DIR, filename), 'r', encoding='utf-8') as f:
+                    article = json.load(f)
+                    articles.append(article)
+        
+        # 按创建时间倒序排序
+        articles.sort(key=lambda x: x['created_at'], reverse=True)
+        return jsonify(articles)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# 添加获取单个文章的接口
+@app.route('/api/articles/<article_id>', methods=['GET'])
+def get_article(article_id):
+    try:
+        article_path = os.path.join(ARTICLES_DIR, f'{article_id}.json')
+        if not os.path.exists(article_path):
+            return jsonify({'error': 'Article not found'}), 404
+            
+        with open(article_path, 'r', encoding='utf-8') as f:
+            article = json.load(f)
+            return jsonify(article)
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -79,4 +136,4 @@ def get_audio(filename):
         return jsonify({'error': str(e)}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
