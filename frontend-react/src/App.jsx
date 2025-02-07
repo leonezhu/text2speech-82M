@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect ,useRef} from 'react'
 import './App.css'
 
 function App() {
@@ -9,6 +9,9 @@ function App() {
   const [articles, setArticles] = useState([])
   const [selectedArticle, setSelectedArticle] = useState(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+
+  const audioRef = useRef(null)
 
   useEffect(() => {
     fetchArticles()
@@ -100,13 +103,40 @@ function App() {
               <i className="fas fa-arrow-left"></i> 返回
             </button>
             <div className="audio-player">
-              <audio controls src={audioUrl}>
+              <audio
+                ref={audioRef}
+                controls
+                src={audioUrl}
+                onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
+              >
                 您的浏览器不支持音频播放
               </audio>
             </div>
             <div className="article-content">
               <h1>{selectedArticle.title}</h1>
-              <p>{selectedArticle.content}</p>
+              <div className="sentences-container">
+                {selectedArticle.sentences?.map((sentence, index) => (
+                  sentence.text === '\n' ? (
+                    <br key={index} />
+                  ) : (
+                    <span
+                      key={index}
+                      className={`sentence ${
+                        currentTime >= sentence.start_time && 
+                        currentTime <= sentence.end_time ? 'active' : ''
+                      }`}
+                      onClick={() => {
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = sentence.start_time;
+                          audioRef.current.play();
+                        }
+                      }}
+                    >
+                      {sentence.text}{' '}
+                    </span>
+                  )
+                ))}
+              </div>
             </div>
           </div>
         ) : (

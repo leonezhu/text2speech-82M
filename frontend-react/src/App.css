@@ -250,6 +250,47 @@ body {
 }
 
 .sidebar-toggle {
+  position: fixed;
+  left: 10px;
+  top: 10px;
+  z-index: 1001;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background-color: #2c5282;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar-toggle:hover {
+  background-color: #2b6cb0;
+  transform: scale(1.05);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+.main-content {
+  flex: 1;
+  height: auto;
+  min-height: 100vh;
+  padding: 1.5rem;
+  overflow-y: auto;
+  margin-left: 0;
+  transition: margin-left 0.3s ease;
+  background-color: #f8f9fa;
+}
+
+.sidebar.open {
+  left: 0;
+}
+
+.sidebar-toggle {
   position: absolute;
   right: -40px;
   top: 10px;
@@ -338,11 +379,29 @@ body {
   color: #2d3748;
 }
 
-.article-content p {
+.sentences-container {
   margin: 0;
   font-size: 1.1rem;
   color: #4a5568;
   white-space: pre-wrap;
+  line-height: 1.8;
+}
+
+.sentence {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.sentence:hover {
+  background-color: #edf2f7;
+}
+
+.sentence.active {
+  background-color: #ebf8ff;
+  color: #2b6cb0;
+  font-weight: 500;
 }
 
 .text-input-view {
