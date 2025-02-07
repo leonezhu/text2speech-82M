@@ -55,7 +55,6 @@ def text_to_speech():
         all_audio = []
         sentences = []
         current_time = 0
-        generator = pipeline(text, voice='af_heart', speed=1)
         max_retries = 3  # 最大重试次数
         
         print(f"[DEBUG] 原始输入文本: {text}")
@@ -100,10 +99,13 @@ def text_to_speech():
         # 生成每个句子的音频并记录时间戳
         for i, sentence in enumerate(text_sentences):
             retry_count = 0
+            # 为每个句子创建新的生成器实例
+            generator = pipeline(sentence, voice='af_heart', speed=1)
             while retry_count < max_retries:
                 try:
                     print(f"[DEBUG] 正在处理第{i+1}个句子: {sentence} (尝试 {retry_count + 1}/{max_retries})")
-                    # 尝试从生成器获取下一个音频片段
+
+                    # 获取音频片段
                     _, _, audio = next(generator)
                     duration = len(audio) / 24000  # 计算音频时长（采样率24000）
                     print(f"[DEBUG] 生成音频片段长度: {len(audio)}, 持续时间: {duration}秒")
@@ -113,6 +115,7 @@ def text_to_speech():
                         'end_time': current_time + duration
                     })
                     current_time += duration
+                    
                     all_audio.append(audio)
                     print(f"[DEBUG] 成功处理句子，当前总时长: {current_time}秒")
                     break  # 成功生成音频，跳出重试循环
@@ -125,9 +128,9 @@ def text_to_speech():
                         break
                     retry_count += 1
                     # 重新初始化生成器
-                    generator = pipeline(text, voice='af_heart', speed=1)
-
-                    print(f"[INFO] 重新初始化生成器，准备第{retry_count + 1}次重试")
+                    print(f"[INFO] 重新初始化生成器，准备重试处理句子: {sentence}，第{retry_count + 1}次重试")
+                    generator = pipeline(sentence, voice='af_heart', speed=1)
+                   
                     
                 except Exception as e:
                     print(f"[ERROR] 处理第{i+1}个句子时发生错误: {str(e)}")
@@ -135,8 +138,8 @@ def text_to_speech():
                         raise Exception(f"处理句子'{sentence}'时发生错误: {str(e)}")
                     retry_count += 1
                     # 重新初始化生成器
-                    generator = pipeline(text, voice='af_heart', speed=1)
-                    print(f"[INFO] 重新初始化生成器，准备第{retry_count + 1}次重试")
+                    generator = pipeline(sentence, voice='af_heart', speed=1)
+                    print(f"[INFO] 重新初始化生成器，准备重试处理句子: {sentence}，第{retry_count + 1}次重试")
 
         # 将所有音频段拼接成一个完整的音频
         if all_audio:
