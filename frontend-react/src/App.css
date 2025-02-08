@@ -252,7 +252,7 @@ body {
 .sidebar-toggle {
   position: fixed;
   left: 10px;
-  top: 10px;
+  top: 60px;
   z-index: 1001;
   width: 40px;
   height: 40px;
@@ -351,26 +351,40 @@ body {
   max-width: 800px;
   margin: 0 auto;
   padding: 1rem;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  padding-top: 80px;
 }
 
 .article-view .audio-player {
-  position: relative;
-  margin: 0 0 1rem 0;
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  margin: 0;
   padding: 1rem;
-  background: white;
-  border-radius: 8px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  width: 100%;
+  max-width: 770px;
+  border-radius: 8px;
+  margin-top: 10px;
 }
 
 .article-content {
+  margin-top: 20px;
   flex: 1;
   background-color: white;
   padding: 1.5rem;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  overflow-y: auto;
+  height: calc(100vh - 150px);
 }
 
 .article-content h1 {
@@ -423,10 +437,10 @@ body {
 }
 
 .back-button {
-  position: absolute;
+  position: fixed;
   right: 10px;
   top: 10px;
-  z-index: 2;
+  z-index: 1002;
   padding: 0.4rem 0.8rem;
   background-color: white;
   border: 1px solid #e2e8f0;
