@@ -21,8 +21,8 @@ if not os.path.exists(AUDIO_DIR):
 pipeline = KPipeline(lang_code='a')
 
 def get_safe_filename(text, timestamp):
-    # 获取第一句话（以。！？.!?为分隔）
-    first_sentence = re.split(r'[。！？.!?]', text.strip())[0]
+    # 获取第一句话（以。！？.!?；;为分隔）
+    first_sentence = re.split(r'[。！？.!?；;]', text.strip())[0]
     
     # 如果第一句话太长，截取前20个字符
     if len(first_sentence) > 20:
@@ -68,7 +68,7 @@ def text_to_speech():
 
         # 改进句子分割的正则表达式
         # 匹配句号/问号/感叹号，后面可能跟着空格
-        sentence_parts = re.split(r'([。！？.!?][\s]*)', text)
+        sentence_parts = re.split(r'([。！？.!?；;][\s]*)', text)
         text_sentences = []
         
         print(f"[DEBUG] 分割后的句子部分: {sentence_parts}")
@@ -79,7 +79,7 @@ def text_to_speech():
             if not part:
                 continue
                 
-            if re.search(r'[。！？.!?][\s]*$', part):
+            if re.search(r'[。！？.!?；;][\s]*$', part):
                 # 这部分是标点符号（可能带空格）
                 current_sentence += part
                 if current_sentence.strip():
@@ -149,9 +149,11 @@ def text_to_speech():
 
             # 保存文章内容
             article_id = timestamp
+            first_sentence = text_sentences[0].strip() if text_sentences else text  # 获取第一句
+            title = re.sub(r'[。！？.!?；;]$', '', first_sentence)  # 去掉后面的标点符号
             article_data = {
                 'id': article_id,
-                'title': text[:30] + '...' if len(text) > 30 else text,
+                'title': title,  # 使用优化后的标题
                 'content': text,
                 'audio_filename': filename,
                 'created_at': datetime.now().isoformat(),
