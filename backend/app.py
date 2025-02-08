@@ -70,11 +70,16 @@ def text_to_speech():
             if not paragraph.strip():
                 continue
                 
-            # 处理每个段落的句子
+            # 处理每个段落的句子，保留中文方括号内容
             paragraph = re.sub(r'\s+', ' ', paragraph.strip())
-            sentence_parts = re.split(r'([。！？.!?；;][\s]*)', paragraph)
+            # 先提取并保存中文方括号内容
+            chinese_texts = re.findall(r'\[(.*?)\]', paragraph)
+            # 临时替换中文方括号内容，以防止被句子分割
+            temp_paragraph = re.sub(r'\[(.*?)\]', 'CHINESE_TEXT_PLACEHOLDER', paragraph)
+            sentence_parts = re.split(r'([。！？.!?；;][\s]*)', temp_paragraph)
             
             current_sentence = ''
+            chinese_index = 0
             for i in range(len(sentence_parts)):
                 part = sentence_parts[i].strip()
                 if not part:
@@ -84,6 +89,10 @@ def text_to_speech():
                     # 这部分是标点符号（可能带空格）
                     current_sentence += part
                     if current_sentence.strip():
+                        # 还原中文方括号内容
+                        if 'CHINESE_TEXT_PLACEHOLDER' in current_sentence and chinese_index < len(chinese_texts):
+                            current_sentence = current_sentence.replace('CHINESE_TEXT_PLACEHOLDER', f'[{chinese_texts[chinese_index]}]')
+                            chinese_index += 1
                         text_sentences.append(current_sentence.strip())
                         print(f"[DEBUG] 添加完整句子: {current_sentence.strip()}")
                     current_sentence = ''
@@ -94,6 +103,9 @@ def text_to_speech():
             
             # 处理段落最后一个可能没有标点的句子
             if current_sentence.strip():
+                # 还原中文方括号内容
+                if 'CHINESE_TEXT_PLACEHOLDER' in current_sentence and chinese_index < len(chinese_texts):
+                    current_sentence = current_sentence.replace('CHINESE_TEXT_PLACEHOLDER', f'[{chinese_texts[chinese_index]}]')
                 text_sentences.append(current_sentence.strip())
             
             # 在段落结束添加换行标记
@@ -115,6 +127,16 @@ def text_to_speech():
                 })
                 continue
                 
+            # 检查句子是否只包含中文方括号内容
+            if re.match(r'^\[.*\]$', sentence.strip()):
+                # 如果是纯中文注释，添加一个空的时间戳记录
+                sentences.append({
+                    'text': sentence,
+                    'start_time': current_time,
+                    'end_time': current_time
+                })
+                continue
+
             retry_count = 0
             # 为每个句子创建新的生成器实例
             generator = pipeline(sentence, voice='af_heart', speed=1)
