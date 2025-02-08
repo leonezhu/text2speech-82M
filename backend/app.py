@@ -58,46 +58,63 @@ def text_to_speech():
         max_retries = 3  # 最大重试次数
         
         print(f"[DEBUG] 原始输入文本: {text}")
-        # 简化文本处理，先处理所有换行符，再进行句子分割
-        text = text.strip().replace('\n\n+', ' ').replace('\n', ' ')
+        # 处理连续的换行符，将多个换行符替换为单个换行符
+        text = text.strip().replace('\n\n+', '\n').replace('\n\n', '\n')
         print(f"[DEBUG] 处理换行符后的文本: {text}")
 
-        # 替换所有连续的空格为一个空格
-        text = re.sub(r'\s+', ' ', text)
-        print(f"[DEBUG] 处理空格后的文本: {text}")
-
-        # 改进句子分割的正则表达式
-        # 匹配句号/问号/感叹号，后面可能跟着空格
-        sentence_parts = re.split(r'([。！？.!?；;][\s]*)', text)
+        # 将文本按换行符分割，保存段落信息
+        paragraphs = text.split('\n')
         text_sentences = []
         
-        print(f"[DEBUG] 分割后的句子部分: {sentence_parts}")
-        # 组合句子和分隔符，处理最后一个可能没有标点的句子
-        current_sentence = ''
-        for i in range(len(sentence_parts)):
-            part = sentence_parts[i].strip()
-            if not part:
+        for paragraph in paragraphs:
+            if not paragraph.strip():
                 continue
                 
-            if re.search(r'[。！？.!?；;][\s]*$', part):
-                # 这部分是标点符号（可能带空格）
-                current_sentence += part
-                if current_sentence.strip():
-                    text_sentences.append(current_sentence.strip())
-                    print(f"[DEBUG] 添加完整句子: {current_sentence.strip()}")
-                current_sentence = ''
-            else:
-                # 这部分是句子内容
-                current_sentence += part
-                print(f"[DEBUG] 当前处理的句子部分: {current_sentence}")
-
-        # 处理最后一个可能没有标点的句子
-        if current_sentence.strip():
-            text_sentences.append(current_sentence.strip())
+            # 处理每个段落的句子
+            paragraph = re.sub(r'\s+', ' ', paragraph.strip())
+            sentence_parts = re.split(r'([。！？.!?；;][\s]*)', paragraph)
+            
+            current_sentence = ''
+            for i in range(len(sentence_parts)):
+                part = sentence_parts[i].strip()
+                if not part:
+                    continue
+                    
+                if re.search(r'[。！？.!?；;][\s]*$', part):
+                    # 这部分是标点符号（可能带空格）
+                    current_sentence += part
+                    if current_sentence.strip():
+                        text_sentences.append(current_sentence.strip())
+                        print(f"[DEBUG] 添加完整句子: {current_sentence.strip()}")
+                    current_sentence = ''
+                else:
+                    # 这部分是句子内容
+                    current_sentence += part
+                    print(f"[DEBUG] 当前处理的句子部分: {current_sentence}")
+            
+            # 处理段落最后一个可能没有标点的句子
+            if current_sentence.strip():
+                text_sentences.append(current_sentence.strip())
+            
+            # 在段落结束添加换行标记
+            text_sentences.append('\n')
         
+        # 移除最后一个多余的换行标记
+        if text_sentences and text_sentences[-1] == '\n':
+            text_sentences.pop()
+            
         print(f"[DEBUG] 最终分割的句子列表: {text_sentences}")
         # 生成每个句子的音频并记录时间戳
         for i, sentence in enumerate(text_sentences):
+            # 如果是换行符，添加一个空的时间戳记录
+            if sentence == '\n':
+                sentences.append({
+                    'text': '\n',
+                    'start_time': current_time,
+                    'end_time': current_time
+                })
+                continue
+                
             retry_count = 0
             # 为每个句子创建新的生成器实例
             generator = pipeline(sentence, voice='af_heart', speed=1)
