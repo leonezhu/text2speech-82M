@@ -114,6 +114,11 @@ function App() {
                         audioRef.current.play();
                       }
                     }}
+                    ref={el => {
+                      if (el && currentTime >= sentence.start_time && currentTime <= sentence.end_time) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }
+                    }}
                   >
                     {sentence.text}{' '}
                   </span>
