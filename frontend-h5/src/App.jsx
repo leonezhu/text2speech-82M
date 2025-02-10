@@ -6,6 +6,7 @@ function App() {
   const [selectedArticle, setSelectedArticle] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const GITHUB_REPO = 'leonezhu/text2speech-82M'
   const GITHUB_BRANCH = 'master'
@@ -33,7 +34,12 @@ function App() {
         })
 
         const articles = await Promise.all(articlePromises)
-        setArticles(articles.sort((a, b) => b.id.localeCompare(a.id)))
+        const sortedArticles = articles.sort((a, b) => b.id.localeCompare(a.id))
+        setArticles(sortedArticles)
+        // 自动选择第一篇文章
+        if (sortedArticles.length > 0) {
+          setSelectedArticle(sortedArticles[0])
+        }
       }
     } catch (err) {
       setError('获取文章列表失败: ' + err.message)
@@ -42,10 +48,22 @@ function App() {
     }
   }
 
+  const handleArticleSelect = (article) => {
+    setSelectedArticle(article)
+    setIsSidebarOpen(false)
+  }
+
   return (
     <div className="app-container">
-      <div className="sidebar">
-        <h2>文章列表</h2>
+      <button
+        className="sidebar-toggle"
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+      >
+        ☰
+      </button>
+
+      <div className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <h2> &nbsp; </h2>
         {loading ? (
           <div className="loading">加载中...</div>
         ) : error ? (
@@ -56,7 +74,7 @@ function App() {
               <div
                 key={article.id}
                 className={`article-item ${selectedArticle?.id === article.id ? 'selected' : ''}`}
-                onClick={() => setSelectedArticle(article)}
+                onClick={() => handleArticleSelect(article)}
               >
                 {article.title || article.id}
               </div>
@@ -68,15 +86,8 @@ function App() {
       <div className="main-content">
         {selectedArticle ? (
           <div className="article-view">
-            <button 
-              className="back-button"
-              onClick={() => setSelectedArticle(null)}
-            >
-              返回列表
-            </button>
-            <h1>{selectedArticle.title}</h1>
             <div className="audio-player">
-              <audio
+              <audio 
                 controls
                 src={selectedArticle.audioUrl}
               >
@@ -84,6 +95,7 @@ function App() {
               </audio>
             </div>
             <div className="article-content">
+              <h1>{selectedArticle.title}</h1>
               {selectedArticle.sentences?.map((sentence, index) => (
                 sentence.text === '\n' ? (
                   <br key={index} />
@@ -95,12 +107,11 @@ function App() {
               ))}
             </div>
           </div>
-        ) : (
-          <div className="welcome-message">
-            <h1>文字转语音展示</h1>
-            <p>请从左侧选择一篇文章查看详情</p>
-          </div>
-        )}
+        ) : loading ? (
+          <div className="loading">加载中...</div>
+        ) : error ? (
+          <div className="error">{error}</div>
+        ) : null}
       </div>
     </div>
   )
