@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
 function App() {
@@ -7,6 +7,9 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+
+  const audioRef = useRef(null)
 
   const GITHUB_REPO = 'leonezhu/text2speech-82M'
   const GITHUB_BRANCH = 'master'
@@ -88,19 +91,30 @@ function App() {
           <div className="article-view">
             <div className="audio-player">
               <audio 
+                ref={audioRef}
                 controls
                 src={selectedArticle.audioUrl}
+                onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
               >
                 您的浏览器不支持音频播放
               </audio>
             </div>
             <div className="article-content">
-              <h1>{selectedArticle.title}</h1>
+              <h2>{selectedArticle.title}</h2>
               {selectedArticle.sentences?.map((sentence, index) => (
                 sentence.text === '\n' ? (
                   <br key={index} />
                 ) : (
-                  <span key={index} className="sentence">
+                  <span
+                    key={index}
+                    className={`sentence ${currentTime >= sentence.start_time && currentTime <= sentence.end_time ? 'active' : ''}`}
+                    onClick={() => {
+                      if (audioRef.current) {
+                        audioRef.current.currentTime = sentence.start_time;
+                        audioRef.current.play();
+                      }
+                    }}
+                  >
                     {sentence.text}{' '}
                   </span>
                 )
