@@ -115,13 +115,24 @@ def text_to_speech():
             # 分割英文段落
             eng_parts = [part.strip() for part in temp_paragraph.split('CN_PLACEHOLDER')]
             
-            # 重建段落，保持原有顺序
+            # 重建段落，保持原有顺序，并对中文段落进行分句
             processed_parts = []
             for i in range(max(len(eng_parts), len(chinese_segments))):
                 if i < len(eng_parts) and eng_parts[i]:
                     processed_parts.append(('en', eng_parts[i]))
-                if i < len(chinese_segments) and chinese_segments[i]:
-                    processed_parts.append(('zh', chinese_segments[i]))
+                if i < len(chinese_segments):
+                    # 对中文段落进行分句处理
+                    chinese_text = chinese_segments[i]
+                    if chinese_text.strip():
+                        # 分句并保留分隔符
+                        chinese_sentences = re.split(r'([。！？；])', chinese_text)
+                        current_sentence = ''
+                        for j in range(0, len(chinese_sentences), 2):
+                            current_sentence = chinese_sentences[j]
+                            if j + 1 < len(chinese_sentences):
+                                current_sentence += chinese_sentences[j + 1]
+                            if current_sentence.strip():
+                                processed_parts.append(('zh', current_sentence))
 
             # 处理每个语言段落
             for part_lang, part_text in processed_parts:

@@ -41,6 +41,11 @@ function App() {
       setAudioUrl(
         `http://localhost:5000/api/audio/${article.language_versions[defaultAudioLang].audio_filename}`
       );
+      // 设置显示的句子
+      const sentences = article.language_versions[defaultAudioLang]?.sentences || [];
+      setShowSentences(sentences);
+      // 初始化显示的句子，确保显示中英对照
+      setDisplayLanguage("both");
       // 选择文章后自动隐藏侧边栏
       setIsSidebarOpen(false);
     } catch (err) {
@@ -97,22 +102,25 @@ function App() {
 
       const data = await response.json();
 
-      if (response.ok) {
-        // 获取默认语言版本（优先使用中文）
-        const defaultLang = data.language_versions["zh"] ? "zh" : "en";
-        setAudioLanguage(defaultLang);
-        setAudioUrl(
-          `http://localhost:5000/api/audio/${data.language_versions[defaultLang].audio_filename}`
-        );
-
-        // 设置可用语言列表
+      if (response.ok && data.language_versions) {
+        // 获取可用语言列表
         const languages = Object.keys(data.language_versions);
         setAvailableLanguages(languages);
 
-        // 刷新文章列表
-        await fetchArticles();
+        if (languages.length > 0) {
+          const defaultLang = languages.includes('en') ? 'en' : languages[0];
+          setAudioLanguage(defaultLang);
+          setAudioUrl(
+            `http://localhost:5000/api/audio/${data.language_versions[defaultLang].audio_filename}`
+          );
+
+          // 刷新文章列表
+          await fetchArticles();
+        } else {
+          setError('没有可用的语言版本');
+        }
       } else {
-        setError(data.error || "转换失败");
+        setError(data.error || '转换失败：未获取到语言版本数据');
       }
     } catch (err) {
       setError("请求失败: " + err.message);
