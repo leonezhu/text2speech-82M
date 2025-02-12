@@ -7,7 +7,16 @@ import numpy as np
 import json
 from datetime import datetime
 import re
+import logging
 from models import Sentence, Article
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
@@ -17,10 +26,24 @@ AUDIO_DIR = "audio_files"
 if not os.path.exists(AUDIO_DIR):
     os.makedirs(AUDIO_DIR)
 
-# 初始化 Kokoro pipeline
-pipeline = KPipeline(lang_code='a')
+# 语音配置
+LANG_CONFIG = {
+    'zh': {
+        'code': 'z',
+        'voice': 'zm_yunxia'
+    },
+    'en': {
+        'code': 'a',
+        'voice': 'af_heart'
+    }
+}
 
-def get_safe_filename(text, timestamp):
+# 初始化 Kokoro pipeline 字典
+pipelines = {}
+for lang, config in LANG_CONFIG.items():
+    pipelines[lang] = KPipeline(lang_code=config['code'])
+
+def get_safe_filename(text, timestamp, language):
     # 获取第一句话（以。！？.!?；;为分隔）
     first_sentence = re.split(r'[。！？.!?；;]', text.strip())[0]
     
@@ -31,196 +54,362 @@ def get_safe_filename(text, timestamp):
     # 移除不安全的文件名字符
     safe_name = re.sub(r'[\\/:*?"<>|\s]', '_', first_sentence)
     
-    # 组合文件名：第一句话_时间戳.wav
-    return f'{safe_name}_{timestamp}.wav'
+    # 组合文件名：第一句话_语言_时间戳.wav
+    return f'{safe_name}_{language}_{timestamp}.wav'
 
 # 添加文章存储目录
 ARTICLES_DIR = "articles"
 if not os.path.exists(ARTICLES_DIR):
     os.makedirs(ARTICLES_DIR)
 
-# 修改 text_to_speech 函数
+# 添加语言检测函数
+def is_chinese(char):
+    return '\u4e00' <= char <= '\u9fff'
+
+def split_by_language(text):
+    segments = []
+    current_type = None  # 'zh' or 'en'
+    current_text = ''
+    current_sentence = ''
+    
+    for char in text:
+        current_sentence += char
+        
+        # 如果是空格或标点，添加到当前文本但不改变语言类型
+        if char.isspace() or char in '。！？.!?；;,"':
+            if current_text:
+                current_text += char
+            continue
+            
+        is_zh = is_chinese(char)
+        char_type = 'zh' if is_zh else 'en'
+        
+        if current_type is None:
+            current_type = char_type
+            current_text = char
+        elif char_type == current_type:
+            current_text += char
+        else:
+            if current_text.strip():
+                # 保存当前语言段落及其在原文中的完整上下文
+                segments.append({
+                    'type': current_type,
+                    'text': current_text.strip(),
+                    'full_context': current_sentence.strip()
+                })
+            current_type = char_type
+            current_text = char
+    
+    if current_text.strip():
+        segments.append({
+            'type': current_type,
+            'text': current_text.strip(),
+            'full_context': current_sentence.strip()
+        })
+    
+    return segments
+
+# 在 text_to_speech 函数中修改处理逻辑
 @app.route('/api/tts', methods=['POST'])
 def text_to_speech():
     try:
-        text = request.json.get('text')
+        logger.info("开始处理 TTS 请求")
+        data = request.json
+        text = data.get('text')
+        languages = data.get('languages', ['zh'])
+        
+        logger.info(f"请求参数: languages={languages}, text_length={len(text) if text else 0}")
+        
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = get_safe_filename(text, timestamp)
-        filepath = os.path.join(AUDIO_DIR, filename)
+        article_id = timestamp
+        language_versions = {}
 
-        # 生成语音并记录每个句子的时间戳
-        all_audio = []
-        sentences = []
-        current_time = 0
-        max_retries = 3  # 最大重试次数
-        
-        print(f"[DEBUG] 原始输入文本: {text}")
-        # 处理连续的换行符，将多个换行符替换为单个换行符
-        text = text.strip().replace('\n\n+', '\n').replace('\n\n', '\n')
-        print(f"[DEBUG] 处理换行符后的文本: {text}")
-
-        # 将文本按换行符分割，保存段落信息
-        paragraphs = text.split('\n')
-        text_sentences = []
-        
-        for paragraph in paragraphs:
-            if not paragraph.strip():
+        for lang in languages:
+            if lang not in LANG_CONFIG:
+                logger.warning(f"不支持的语言: {lang}")
                 continue
-                
-            # 处理每个段落的句子，保留中文方括号内容和URL
-            paragraph = re.sub(r'\s+', ' ', paragraph.strip())
-            # 先提取并保存中文方括号内容和URL
-            chinese_texts = re.findall(r'\[(.*?)\]', paragraph)
-            urls = re.findall(r'https?://\S+', paragraph)
-            # 临时替换中文方括号内容和URL，以防止被句子分割
-            temp_paragraph = re.sub(r'\[(.*?)\]', 'CHINESE_TEXT_PLACEHOLDER', paragraph)
-            temp_paragraph = re.sub(r'https?://\S+', 'URL_PLACEHOLDER', temp_paragraph)
-            sentence_parts = re.split(r'([。！？.!?；;][\s]*)', temp_paragraph)
-            
-            current_sentence = ''
-            chinese_index = 0
-            url_index = 0
-            for i in range(len(sentence_parts)):
-                part = sentence_parts[i].strip()
-                if not part:
+
+            logger.info(f"开始处理 {lang} 语言版本")
+            filename = get_safe_filename(text, timestamp, lang)
+            filepath = os.path.join(AUDIO_DIR, filename)
+
+            all_audio = []
+            sentences = []
+            current_time = 0
+            max_retries = 3
+
+            # 处理文本
+            text = text.strip().replace('\n\n+', '\n').replace('\n\n', '\n')
+            paragraphs = text.split('\n')
+            text_sentences = []
+
+            # 分段处理文本
+            for paragraph in paragraphs:
+                if not paragraph.strip():
                     continue
-                    
-                if re.search(r'[。！？.!?；;][\s]*$', part):
-                    # 这部分是标点符号（可能带空格）
-                    current_sentence += part
-                    if current_sentence.strip():
-                        # 还原中文方括号内容和URL
-                        while 'CHINESE_TEXT_PLACEHOLDER' in current_sentence and chinese_index < len(chinese_texts):
-                            current_sentence = current_sentence.replace('CHINESE_TEXT_PLACEHOLDER', f'[{chinese_texts[chinese_index]}]', 1)
-                            chinese_index += 1
-                        while 'URL_PLACEHOLDER' in current_sentence and url_index < len(urls):
-                            current_sentence = current_sentence.replace('URL_PLACEHOLDER', urls[url_index], 1)
-                            url_index += 1
-                        text_sentences.append(current_sentence.strip())
-                        print(f"[DEBUG] 添加完整句子: {current_sentence.strip()}")
-                    current_sentence = ''
-                else:
-                    # 这部分是句子内容
-                    current_sentence += part
-                    print(f"[DEBUG] 当前处理的句子部分: {current_sentence}")
-            
-            # 处理段落最后一个可能没有标点的句子
-            if current_sentence.strip():
-                # 还原中文方括号内容和URL
-                while 'CHINESE_TEXT_PLACEHOLDER' in current_sentence and chinese_index < len(chinese_texts):
-                    current_sentence = current_sentence.replace('CHINESE_TEXT_PLACEHOLDER', f'[{chinese_texts[chinese_index]}]', 1)
-                    chinese_index += 1
-                while 'URL_PLACEHOLDER' in current_sentence and url_index < len(urls):
-                    current_sentence = current_sentence.replace('URL_PLACEHOLDER', urls[url_index], 1)
-                    url_index += 1
-                text_sentences.append(current_sentence.strip())
-            
-            # 在段落结束添加换行标记
-            text_sentences.append('\n')
-        
-        # 移除最后一个多余的换行标记
-        if text_sentences and text_sentences[-1] == '\n':
-            text_sentences.pop()
-            
-        print(f"[DEBUG] 最终分割的句子列表: {text_sentences}")
-        # 生成每个句子的音频并记录时间戳
-        for i, sentence in enumerate(text_sentences):
-            # 如果是换行符，添加一个空的时间戳记录
-            if sentence == '\n':
-                sentences.append({
-                    'text': '\n',
-                    'start_time': current_time,
-                    'end_time': current_time
-                })
-                continue
+
+                paragraph = re.sub(r'\s+', ' ', paragraph.strip())
+                urls = re.findall(r'https?://\S+', paragraph)
+                temp_paragraph = re.sub(r'https?://\S+', 'URL_PLACEHOLDER', paragraph)
+                sentence_parts = re.split(r'([。！？.!?；;][\s]*)', temp_paragraph)
+
+                current_sentence = ''
+                url_index = 0
                 
-            # 检查句子是否只包含中文方括号内容或URL
-            if re.match(r'^\[.*\]$', sentence.strip()) or re.match(r'^https?://\S+$', sentence.strip()):
-                # 如果是纯中文注释或URL，添加一个空的时间戳记录
-                sentences.append({
-                    'text': sentence,
-                    'start_time': current_time,
-                    'end_time': current_time
-                })
-                continue
+                # 处理每个句子
+                for i in range(len(sentence_parts)):
+                    part = sentence_parts[i].strip()
+                    if not part:
+                        continue
 
-            retry_count = 0
-            # 为每个句子创建新的生成器实例
-            generator = pipeline(sentence, voice='af_heart', speed=1)
-            while retry_count < max_retries:
-                try:
-                    print(f"[DEBUG] 正在处理第{i+1}个句子: {sentence} (尝试 {retry_count + 1}/{max_retries})")
+                    if re.search(r'[。！？.!?；;][\s]*$', part):
+                        current_sentence += part
+                        if current_sentence.strip():
+                            # 替换回 URL
+                            while 'URL_PLACEHOLDER' in current_sentence and url_index < len(urls):
+                                current_sentence = current_sentence.replace('URL_PLACEHOLDER', urls[url_index], 1)
+                                url_index += 1
+                            
+                            # 分离中英文并保留完整上下文
+                            segments = split_by_language(current_sentence.strip())
+                            for segment in segments:
+                                if segment['type'] == lang:  # 只处理当前语言的文本
+                                    # 如果是英文版本，清理多余的标点符号
+                                    if lang == 'en':
+                                        # 清理多余的标点符号，包括破折号、波浪号等
+                                        cleaned_text = re.sub(r'[，,。！？.!?；;—~""''\s]*(?=[，,。！？.!?；;—~""''])|[—~""'']', '', segment['text'])
+                                        text_sentences.append(cleaned_text)
+                                    else:
+                                        text_sentences.append(segment['text'])
+                                elif lang == 'en' and segment['type'] == 'zh':
+                                    # 如果是英文版本且遇到中文段落，保存完整上下文中的英文部分
+                                    eng_segments = split_by_language(segment['full_context'])
+                                    for eng_seg in eng_segments:
+                                        if eng_seg['type'] == 'en':
+                                            # 清理多余的标点符号，包括破折号、波浪号等
+                                            cleaned_text = re.sub(r'[，,。！？.!?；;—~""''\s]*(?=[，,。！？.!?；;—~""''])|[—~""'']', '', eng_seg['text'])
+                                            text_sentences.append(cleaned_text)
+                        current_sentence = ''
+                    else:
+                        current_sentence += part
 
-                    # 获取音频片段
-                    _, _, audio = next(generator)
-                    duration = len(audio) / 24000  # 计算音频时长（采样率24000）
-                    print(f"[DEBUG] 生成音频片段长度: {len(audio)}, 持续时间: {duration}秒")
+                if current_sentence.strip():
+                    while 'URL_PLACEHOLDER' in current_sentence and url_index < len(urls):
+                        current_sentence = current_sentence.replace('URL_PLACEHOLDER', urls[url_index], 1)
+                        url_index += 1
+                    text_sentences.append(current_sentence.strip())
+
+                text_sentences.append('\n')
+
+            if text_sentences and text_sentences[-1] == '\n':
+                text_sentences.pop()
+
+            # 生成音频
+            total_sentences = len(text_sentences)
+            logger.info(f"开始生成音频，共 {total_sentences} 个句子")
+            
+            for i, sentence in enumerate(text_sentences):
+                if sentence == '\n':
+                    sentences.append({
+                        'text': '\n',
+                        'start_time': current_time,
+                        'end_time': current_time,
+                        'language': lang
+                    })
+                    continue
+
+                if re.match(r'^https?://\S+$', sentence.strip()):
                     sentences.append({
                         'text': sentence,
                         'start_time': current_time,
-                        'end_time': current_time + duration
+                        'end_time': current_time,
+                        'language': lang
                     })
-                    current_time += duration
-                    
-                    all_audio.append(audio)
-                    print(f"[DEBUG] 成功处理句子，当前总时长: {current_time}秒")
-                    break  # 成功生成音频，跳出重试循环
+                    continue
 
-                except StopIteration as e:
-                    print(f"[ERROR] 生成器在处理第{i+1}个句子时提前结束: {str(e)}")
-                    if retry_count == max_retries - 1:
-                        # 如果是最后一次重试，则返回已生成的部分
-                        print(f"[WARNING] 达到最大重试次数，将返回已生成的{len(all_audio)}个音频片段")
+                start_time = datetime.now()
+                logger.info(f"处理第 {i+1}/{total_sentences} 个句子: {sentence[:30]}...")
+                
+                retry_count = 0
+                pipeline = pipelines[lang]
+                while retry_count < max_retries:
+                    try:
+                        # 如果是英文版本，保存原始的中英混合句子作为完整上下文
+                        if lang == 'en':
+                            # 分离中英文
+                            segments = split_by_language(sentence)
+                            eng_text = ''
+                            for segment in segments:
+                                if segment['type'] == 'en':
+                                    cleaned_text = re.sub(r'[，,。！？.!?；;]\s*(?=[，,。！？.!?；;])', '', segment['text'])
+                                    eng_text += cleaned_text + ' '
+                            eng_text = eng_text.strip()
+                            
+                            if eng_text:  # 只有当存在英文内容时才生成音频
+                                # 清理多余的标点符号，包括破折号、波浪号等
+                                eng_text = re.sub(r'[，,。！？.!?；;—~""''\s]*(?=[，,。！？.!?；;—~""''])|[—~""'']|[\[\]]+$', '', eng_text)
+                                generator = pipeline(eng_text, voice=LANG_CONFIG[lang]['voice'], speed=1)
+                                _, _, audio = next(generator)
+                                duration = len(audio) / 24000
+                                sentences.append({
+                                    'text': sentence,  # 保存完整的中英混合句子
+                                    'audio_text': eng_text,  # 保存用于生成音频的纯英文文本
+                                    'start_time': current_time,
+                                    'end_time': current_time + duration,
+                                    'language': lang
+                                })
+                                current_time += duration
+                                all_audio.append(audio)
+                            else:  # 如果没有英文内容，仍然保存句子但不生成音频
+                                sentences.append({
+                                    'text': sentence,
+                                    'start_time': current_time,
+                                    'end_time': current_time,
+                                    'language': lang
+                                })
+                        else:  # 中文版本保持原有逻辑
+                            generator = pipeline(sentence, voice=LANG_CONFIG[lang]['voice'], speed=1)
+                            _, _, audio = next(generator)
+                            duration = len(audio) / 24000
+                            sentences.append({
+                                'text': sentence,
+                                'start_time': current_time,
+                                'end_time': current_time + duration,
+                                'language': lang
+                            })
+                            current_time += duration
+                            all_audio.append(audio)
+                        
+                        process_time = (datetime.now() - start_time).total_seconds()
+                        logger.info(f"句子处理完成，音频长度: {duration:.2f}秒，处理耗时: {process_time:.2f}秒")
                         break
-                    retry_count += 1
-                    # 重新初始化生成器
-                    print(f"[INFO] 重新初始化生成器，准备重试处理句子: {sentence}，第{retry_count + 1}次重试")
-                    generator = pipeline(sentence, voice='af_heart', speed=1)
-                   
-                    
-                except Exception as e:
-                    print(f"[ERROR] 处理第{i+1}个句子时发生错误: {str(e)}")
-                    if retry_count == max_retries - 1:
-                        raise Exception(f"处理句子'{sentence}'时发生错误: {str(e)}")
-                    retry_count += 1
-                    # 重新初始化生成器
-                    generator = pipeline(sentence, voice='af_heart', speed=1)
-                    print(f"[INFO] 重新初始化生成器，准备重试处理句子: {sentence}，第{retry_count + 1}次重试")
 
-        # 将所有音频段拼接成一个完整的音频
-        if all_audio:
-            combined_audio = np.concatenate(all_audio)
-            # 保存合并后的音频文件
-            sf.write(filepath, combined_audio, 24000)
+                    except (StopIteration, Exception) as e:
+                        retry_count += 1
+                        if retry_count == max_retries:
+                            if isinstance(e, StopIteration):
+                                logger.warning(f"句子处理中断: {sentence[:30]}...")
+                                break
+                            error_msg = f"处理句子'{sentence}'时发生错误: {str(e)}"
+                            logger.error(error_msg)
+                            raise Exception(error_msg)
+                        logger.warning(f"处理失败，第 {retry_count} 次重试...")
 
-            # 保存文章内容
-            article_id = timestamp
-            first_sentence = text_sentences[0].strip() if text_sentences else text  # 获取第一句
-            title = re.sub(r'[。！？.!?；;]$', '', first_sentence)  # 去掉后面的标点符号
+            logger.info(f"音频生成完成，总句子数: {total_sentences}，总时长: {current_time:.2f}秒")
+
+            # 保存音频文件
+            if all_audio:
+                logger.info(f"开始保存音频文件: {filepath}")
+                save_start_time = datetime.now()
+                combined_audio = np.concatenate(all_audio)
+                sf.write(filepath, combined_audio, 24000)
+                save_time = (datetime.now() - save_start_time).total_seconds()
+                logger.info(f"音频文件保存成功，耗时: {save_time:.2f}秒")
+
+                # 保存语言版本信息
+                language_versions[lang] = {
+                    'audio_filename': filename,
+                    'sentences': sentences
+                }
+
+        # 保存文章数据
+        if language_versions:
+            # 使用第一个可用语言版本的第一句话作为标题
+            first_lang = next(iter(language_versions))
+            first_sentences = language_versions[first_lang]['sentences']
+            first_text = next((s['text'] for s in first_sentences if s['text'] != '\n'), text)
+            title = re.sub(r'[。！？.!?；;]$', '', first_text)
+
+            # 使用原始文本的分句结果作为外层sentences，保持段落结构
+            original_sentences = []
+            for paragraph in paragraphs:
+                paragraph_sentences = []
+                
+                if not paragraph.strip():
+                    original_sentences.append({
+                        'text': '\n',
+                        'start_time': 0,
+                        'end_time': 0,
+                        'language': 'zh',
+                        'is_paragraph_break': True
+                    })
+                    continue
+
+                paragraph = re.sub(r'\s+', ' ', paragraph.strip())
+                urls = re.findall(r'https?://\S+', paragraph)
+                temp_paragraph = re.sub(r'https?://\S+', 'URL_PLACEHOLDER', paragraph)
+                sentence_parts = re.split(r'([。！？.!?；;][\s]*)', temp_paragraph)
+
+                current_sentence = ''
+                url_index = 0
+                
+                for i in range(len(sentence_parts)):
+                    part = sentence_parts[i].strip()
+                    if not part:
+                        continue
+
+                    if re.search(r'[。！？.!?；;][\s]*$', part):
+                        current_sentence += part
+                        if current_sentence.strip():
+                            # 替换回 URL
+                            while 'URL_PLACEHOLDER' in current_sentence and url_index < len(urls):
+                                current_sentence = current_sentence.replace('URL_PLACEHOLDER', urls[url_index], 1)
+                                url_index += 1
+                            
+                            paragraph_sentences.append({
+                                'text': current_sentence.strip(),
+                                'start_time': 0,
+                                'end_time': 0,
+                                'language': 'zh',
+                                'is_paragraph_break': False
+                            })
+                        current_sentence = ''
+                    else:
+                        current_sentence += part
+
+                if current_sentence.strip():
+                    while 'URL_PLACEHOLDER' in current_sentence and url_index < len(urls):
+                        current_sentence = current_sentence.replace('URL_PLACEHOLDER', urls[url_index], 1)
+                        url_index += 1
+                    paragraph_sentences.append({
+                        'text': current_sentence.strip(),
+                        'start_time': 0,
+                        'end_time': 0,
+                        'language': 'zh',
+                        'is_paragraph_break': False
+                    })
+                
+                # 将段落中的所有句子添加到原始句子列表中
+                original_sentences.extend(paragraph_sentences)
+
             article_data = {
                 'id': article_id,
-                'title': title,  # 使用优化后的标题
+                'title': title,
                 'content': text,
-                'audio_filename': filename,
+                'audio_filename': language_versions[first_lang]['audio_filename'],
                 'created_at': datetime.now().isoformat(),
-                'sentences': sentences
+                'sentences': original_sentences,
+                'language_versions': language_versions
             }
-            
-            # 保存文章文件
+
             article_path = os.path.join(ARTICLES_DIR, f'{article_id}.json')
             with open(article_path, 'w', encoding='utf-8') as f:
                 json.dump(article_data, f, ensure_ascii=False)
 
             return jsonify({
                 'success': True,
-                'filename': filename,
-                'article_id': article_id
+                'article_id': article_id,
+                'language_versions': {
+                    lang: {'filename': info['audio_filename']}
+                    for lang, info in language_versions.items()
+                }
             })
 
     except Exception as e:
+        logger.error(f"处理失败: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 # 添加获取文章列表的接口
