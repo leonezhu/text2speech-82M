@@ -11,7 +11,7 @@ function App() {
   const [articles, setArticles] = useState([]);
   const [showSentences, setShowSentences] = useState([]);
   const [selectedArticle, setSelectedArticle] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [displayLanguage, setDisplayLanguage] = useState("both");
   const [audioLanguage, setAudioLanguage] = useState(""); // 新增音频语言状态
@@ -47,7 +47,7 @@ function App() {
       // 初始化显示的句子，确保显示中英对照
       setDisplayLanguage("both");
       // 选择文章后自动隐藏侧边栏
-      setIsSidebarOpen(false);
+      // setIsSidebarOpen(false);
     } catch (err) {
       setError("获取文章失败: " + err.message);
     }
@@ -96,31 +96,31 @@ function App() {
         },
         body: JSON.stringify({
           text,
-          languages: "en",
+          language: "en",  // 修改 languages 为 language
         }),
       });
 
       const data = await response.json();
-
-      if (response.ok && data.language_versions) {
-        // 获取可用语言列表
-        const languages = Object.keys(data.language_versions);
-        setAvailableLanguages(languages);
-
-        if (languages.length > 0) {
-          const defaultLang = languages.includes('en') ? 'en' : languages[0];
-          setAudioLanguage(defaultLang);
-          setAudioUrl(
-            `http://localhost:5000/api/audio/${data.language_versions[defaultLang].audio_filename}`
+      
+      if (response.ok) {
+        if (data.article_id) {  // 修改判断条件
+          // 获取新创建的文章详情
+          const articleResponse = await fetch(
+            `http://localhost:5000/api/articles/${data.article_id}`
           );
-
+          const article = await articleResponse.json();
+          console.log(article)
+          
+          // 设置音频 URL
+          // setAudioUrl(`http://localhost:5000/api/audio/${data.audio_filename}`);
+          
           // 刷新文章列表
           await fetchArticles();
         } else {
-          setError('没有可用的语言版本');
+          setError('转换失败：未获取到文章数据');
         }
       } else {
-        setError(data.error || '转换失败：未获取到语言版本数据');
+        setError(data.error || '转换失败');
       }
     } catch (err) {
       setError("请求失败: " + err.message);
@@ -145,15 +145,34 @@ function App() {
     fetchArticles();
   }, []);
 
+  // 添加空格键监听器
+  useEffect(() => {
+    const handleKeyPress = (event) => {
+      if (event.code === 'Space' && audioRef.current) {
+        event.preventDefault(); // 防止页面滚动
+        if (audioRef.current.paused) {
+          audioRef.current.play();
+        } else {
+          audioRef.current.pause();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, []);
+
   return (
-    <div className="app-container">
-      <button
+    <div className="app-container no-bounce">
+      {/* <button
         className="sidebar-toggle"
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
         aria-label={isSidebarOpen ? "隐藏列表" : "显示列表"}
       >
         <i className={`fas ${isSidebarOpen ? "fa-times" : "fa-bars"}`}></i>
-      </button>
+      </button> */}
 
       <div className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="article-list">
@@ -217,7 +236,7 @@ function App() {
               </audio>
             </div>
             <div className="article-content">
-              <h1>{selectedArticle.title}</h1>
+              {/* <h1>{selectedArticle.title}</h1> */}
               <div className="sentences-container">
                 {showSentences.map((sentence, index) =>
                   sentence.text === "\n" ? (

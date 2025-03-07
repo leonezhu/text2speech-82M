@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+# 标题长度限制
+TITLE_LENGTH_LIMIT = 30
+
 # 音频文件保存目录
 AUDIO_DIR = "audio_files"
 if not os.path.exists(AUDIO_DIR):
@@ -82,7 +85,7 @@ def text_to_speech():
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         article_id = timestamp
 
-        # 预处理文本，保留一个换行符作为段落分隔
+        # 预处理文本，保留换行符作为段落分隔
         text = text.strip()
         text = re.sub(r'\n{3,}', '\n\n', text)  # 将多个换行符（3个及以上）替换为两个
         text = re.sub(r'\n\n\n*', '\n\n', text)  # 确保最多只有两个连续的换行
@@ -119,12 +122,10 @@ def text_to_speech():
             processed_parts = []
             for i in range(max(len(eng_parts), len(chinese_segments))):
                 if i < len(eng_parts) and eng_parts[i]:
-                    processed_parts.append(('en', eng_parts[i]))
+                    processed_parts.append(('en', eng_parts[i].strip()))
                 if i < len(chinese_segments):
-                    # 对中文段落进行分句处理
                     chinese_text = chinese_segments[i]
                     if chinese_text.strip():
-                        # 分句并保留分隔符
                         chinese_sentences = re.split(r'([。！？；])', chinese_text)
                         current_sentence = ''
                         for j in range(0, len(chinese_sentences), 2):
@@ -132,7 +133,7 @@ def text_to_speech():
                             if j + 1 < len(chinese_sentences):
                                 current_sentence += chinese_sentences[j + 1]
                             if current_sentence.strip():
-                                processed_parts.append(('zh', current_sentence))
+                                processed_parts.append(('zh', current_sentence.strip()))
 
             # 处理每个语言段落
             for part_lang, part_text in processed_parts:
@@ -149,48 +150,48 @@ def text_to_speech():
                     })
                     continue
 
-                # 分句处理
-                sentence_parts = re.split(r'([。！？.!?；;]\s*)', part_text)
-                current_sentence = ''
+                # 分句处理（对于目标语言的文本）
+                if part_lang == language:
+                    current_sentence = part_text.strip()
+                    if current_sentence:
+                        # 生成音频
+                        retry_count = 0
+                        while retry_count < max_retries:
+                            try:
+                                start_time = datetime.now()
+                                generator = pipeline(current_sentence, voice=LANG_CONFIG[language]['voice'], speed=1)
+                                _, _, audio = next(generator)
+                                duration = len(audio) / 24000
 
-                for i in range(0, len(sentence_parts), 2):
-                    current_sentence = sentence_parts[i]
-                    if i + 1 < len(sentence_parts):
-                        current_sentence += sentence_parts[i + 1]
+                                sentences.append({
+                                    'text': current_sentence,
+                                    'start_time': current_time,
+                                    'end_time': current_time + duration,
+                                    'language': language
+                                })
 
-                    if not current_sentence.strip():
-                        continue
+                                current_time += duration
+                                all_audio.append(audio)
 
-                    # 生成音频
-                    retry_count = 0
-                    while retry_count < max_retries:
-                        try:
-                            start_time = datetime.now()
-                            generator = pipeline(current_sentence, voice=LANG_CONFIG[language]['voice'], speed=1)
-                            _, _, audio = next(generator)
-                            duration = len(audio) / 24000
+                                process_time = (datetime.now() - start_time).total_seconds()
+                                logger.info(f"句子处理完成，音频长度: {duration:.2f}秒，处理耗时: {process_time:.2f}秒")
+                                break
 
-                            sentences.append({
-                                'text': current_sentence.strip(),
-                                'start_time': current_time,
-                                'end_time': current_time + duration,
-                                'language': language
-                            })
+                            except Exception as e:
+                                retry_count += 1
+                                if retry_count == max_retries:
+                                    error_msg = f"处理句子'{current_sentence}'时发生错误: {str(e)}"
+                                    logger.error(error_msg)
+                                    raise Exception(error_msg)
+                                logger.warning(f"处理失败，第 {retry_count} 次重试...")
 
-                            current_time += duration
-                            all_audio.append(audio)
-
-                            process_time = (datetime.now() - start_time).total_seconds()
-                            logger.info(f"句子处理完成，音频长度: {duration:.2f}秒，处理耗时: {process_time:.2f}秒")
-                            break
-
-                        except Exception as e:
-                            retry_count += 1
-                            if retry_count == max_retries:
-                                error_msg = f"处理句子'{current_sentence}'时发生错误: {str(e)}"
-                                logger.error(error_msg)
-                                raise Exception(error_msg)
-                            logger.warning(f"处理失败，第 {retry_count} 次重试...")
+            # 在每个段落结束后添加换行符
+            sentences.append({
+                'text': '\n',
+                'start_time': current_time,
+                'end_time': current_time,
+                'language': language
+            })
 
         # 保存音频文件
         if all_audio:
@@ -206,7 +207,19 @@ def text_to_speech():
 
             # 准备文章数据
             first_text = next((s['text'] for s in sentences if s['text'] != '\n'), text)
+            # 移除句子末尾的标点符号
             title = re.sub(r'[。！？.!?；;]$', '', first_text)
+            # 限制标题长度，如果超过20个字符则截断并添加省略号
+            if len(title) > TITLE_LENGTH_LIMIT:
+                # 尝试在最后一个完整词或标点处截断
+                cutoff = title[:TITLE_LENGTH_LIMIT].rfind(' ')
+                if cutoff == -1:  # 如果找不到空格，就在标点符号处截断
+                    cutoff = max(
+                        title[:TITLE_LENGTH_LIMIT].rfind(c) for c in ',.，。!！?？;；'
+                    )
+                if cutoff == -1:  # 如果找不到标点符号，就直接在第20个字符处截断
+                    cutoff = TITLE_LENGTH_LIMIT
+                title = title[:cutoff].strip() + '...'
 
             # 准备语言版本数据
             language_version = {
