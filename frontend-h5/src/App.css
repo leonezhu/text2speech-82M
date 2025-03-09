@@ -185,7 +185,7 @@ audio::-webkit-media-controls-toggle-closed-captions-button {
   background-color: transparent !important;
   border-radius: 0 !important;
   color: #ffffff !important;
-  filter: brightness(1.5) contrast(1.2);
+  /* filter: brightness(1.2) contrast(1.2);   */ /* 调整播放按钮背景色亮度和对比度 */
 }
 
 audio::-webkit-media-controls-current-time-display,
